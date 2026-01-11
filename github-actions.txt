@@ -1,0 +1,306 @@
+# .github/workflows/test.yml
+name: Smart Contract Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [16.x, 18.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Check code formatting
+      run: npm run format:check || true
+    
+    - name: Compile contracts
+      run: npx hardhat compile
+    
+    - name: Run tests
+      run: npx hardhat test
+    
+    - name: Run test coverage
+      run: npx hardhat coverage
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-medtreasury
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run Solidity linter
+      run: npm run lint:sol || true
+    
+    - name: Run JavaScript linter
+      run: npm run lint:js || true
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run Slither
+      uses: crytic/slither-action@v0.3.0
+      continue-on-error: true
+      with:
+        node-version: 18
+        
+    - name: Run security audit
+      run: npm audit --audit-level=moderate
+
+  build-docs:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Generate documentation
+      run: npx hardhat docgen
+    
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs
+
+---
+
+# .github/workflows/deploy.yml
+name: Deploy to Testnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      network:
+        description: 'Network to deploy to'
+        required: true
+        default: 'mumbai'
+        type: choice
+        options:
+          - mumbai
+          - sepolia
+          - goerli
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Compile contracts
+      run: npx hardhat compile
+    
+    - name: Deploy to ${{ github.event.inputs.network }}
+      env:
+        PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+        INFURA_API_KEY: ${{ secrets.INFURA_API_KEY }}
+        ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
+      run: |
+        npx hardhat run scripts/deploy-testnet.js --network ${{ github.event.inputs.network }}
+    
+    - name: Upload deployment artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-${{ github.event.inputs.network }}
+        path: deployment-*.json
+    
+    - name: Create deployment summary
+      run: |
+        echo "## Deployment Complete 🚀" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Network:** ${{ github.event.inputs.network }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        cat deployment-${{ github.event.inputs.network }}.json >> $GITHUB_STEP_SUMMARY
+
+---
+
+# .github/ISSUE_TEMPLATE/bug_report.md
+---
+name: Bug report
+about: Create a report to help us improve
+title: '[BUG] '
+labels: bug
+assignees: ''
+---
+
+**Describe the bug**
+A clear and concise description of what the bug is.
+
+**To Reproduce**
+Steps to reproduce the behavior:
+1. Deploy contracts with '...'
+2. Call function '....'
+3. See error
+
+**Expected behavior**
+A clear and concise description of what you expected to happen.
+
+**Screenshots**
+If applicable, add screenshots to help explain your problem.
+
+**Environment:**
+ - OS: [e.g. macOS 13.0]
+ - Node Version: [e.g. 16.15.0]
+ - Hardhat Version: [e.g. 2.12.0]
+ - Network: [e.g. localhost, mumbai]
+
+**Smart Contract Details:**
+ - Contract Address: [if deployed]
+ - Transaction Hash: [if applicable]
+
+**Additional context**
+Add any other context about the problem here.
+
+---
+
+# .github/ISSUE_TEMPLATE/feature_request.md
+---
+name: Feature request
+about: Suggest an idea for MedTreasuryFlow
+title: '[FEATURE] '
+labels: enhancement
+assignees: ''
+---
+
+**Is your feature request related to a problem? Please describe.**
+A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+
+**Describe the solution you'd like**
+A clear and concise description of what you want to happen.
+
+**Describe alternatives you've considered**
+A clear and concise description of any alternative solutions or features you've considered.
+
+**Additional context**
+Add any other context or screenshots about the feature request here.
+
+**Implementation suggestions**
+If you have ideas about how this could be implemented, please share them here.
+
+---
+
+# .github/PULL_REQUEST_TEMPLATE.md
+## Description
+<!-- Provide a brief description of the changes in this PR -->
+
+## Type of Change
+- [ ] Bug fix (non-breaking change which fixes an issue)
+- [ ] New feature (non-breaking change which adds functionality)
+- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Documentation update
+- [ ] Code refactoring
+- [ ] Performance improvement
+- [ ] Test coverage improvement
+
+## Related Issues
+<!-- Link to related issues using #issue_number -->
+Fixes #
+Related to #
+
+## Changes Made
+<!-- List the main changes made in this PR -->
+- 
+- 
+- 
+
+## Testing
+<!-- Describe the tests you ran to verify your changes -->
+
+### Test Coverage
+- [ ] Unit tests added/updated
+- [ ] Integration tests added/updated
+- [ ] All tests passing
+- [ ] Test coverage maintained/improved
+
+### Manual Testing
+<!-- Describe manual testing performed -->
+
+## Checklist
+- [ ] My code follows the style guidelines of this project
+- [ ] I have performed a self-review of my own code
+- [ ] I have commented my code, particularly in hard-to-understand areas
+- [ ] I have made corresponding changes to the documentation
+- [ ] My changes generate no new warnings
+- [ ] I have added tests that prove my fix is effective or that my feature works
+- [ ] New and existing unit tests pass locally with my changes
+- [ ] Any dependent changes have been merged and published
+
+## Gas Impact
+<!-- If applicable, describe the gas impact of your changes -->
+- Estimated gas increase/decrease: 
+- Optimization techniques used:
+
+## Security Considerations
+<!-- Describe any security implications of your changes -->
+- [ ] No new security vulnerabilities introduced
+- [ ] Security best practices followed
+- [ ] Access control properly implemented
+
+## Screenshots
+<!-- If applicable, add screenshots to demonstrate the changes -->
+
+## Additional Notes
+<!-- Add any additional notes or context about the PR -->
