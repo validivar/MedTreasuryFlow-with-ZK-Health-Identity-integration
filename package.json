@@ -1,0 +1,9 @@
+{
+  "name": "medtreasury-flow",
+  "version": "1.0.0",
+  "description": "Privacy-Preserving Healthcare Treasury",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile"
+  }
+}
